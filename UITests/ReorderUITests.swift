@@ -87,6 +87,32 @@ final class ReorderUITests: XCTestCase {
         )
     }
 
+    func testFlickBackClosesWithoutOvershoot() {
+        let app = launchSeededApp()
+        let boston = app.staticTexts["Boston"].firstMatch
+        XCTAssertTrue(boston.waitForExistence(timeout: 5))
+
+        let base = boston.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let right = base.withOffset(CGVector(dx: 55, dy: 0))
+        right.press(forDuration: 0.05, thenDragTo: base.withOffset(CGVector(dx: -35, dy: 0)))
+        XCTAssertTrue(app.buttons["swipe-delete-Boston"].firstMatch.waitForExistence(timeout: 3))
+
+        // A firm rightward flick must close the row, not swing it open on
+        // the home side.
+        base.withOffset(CGVector(dx: -35, dy: 0))
+            .press(forDuration: 0.05, thenDragTo: base.withOffset(CGVector(dx: 90, dy: 0)))
+
+        let closed = NSPredicate { _, _ in
+            !app.buttons["swipe-delete-Boston"].firstMatch.exists
+                && !app.buttons["swipe-home-Boston"].firstMatch.exists
+        }
+        let done = XCTNSPredicateExpectation(predicate: closed, object: nil)
+        XCTAssertEqual(
+            XCTWaiter.wait(for: [done], timeout: 5), .completed,
+            "Flicking back should close the row with no action revealed"
+        )
+    }
+
     func testSwipeRightMakesHome() {
         let app = launchSeededApp()
         let cairo = app.staticTexts["Cairo"].firstMatch

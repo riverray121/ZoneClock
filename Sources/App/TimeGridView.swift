@@ -33,7 +33,7 @@ struct TimeGridView: View {
         let widest = store.cities
             .map { ($0.name as NSString).size(withAttributes: [.font: font]).width }
             .max() ?? 80
-        return min(max(widest + 44, 120), 172)
+        return min(max(widest + 44, 134), 176)
     }
 
     /// Hourly instants covering yesterday through tomorrow in home time,
@@ -117,11 +117,19 @@ struct TimeGridView: View {
 
     // MARK: Swipe actions
 
+    /// A single swipe moves between its starting side and closed; returning
+    /// past closed to the opposite side takes a fresh gesture, like Mail.
+    private func swipeBounds(base: CGFloat, isHome: Bool) -> ClosedRange<CGFloat> {
+        let lower: CGFloat = base > 0 ? 0 : -Self.actionWidth
+        let upper: CGFloat = base < 0 ? 0 : (isHome ? 0 : Self.actionWidth)
+        return lower...upper
+    }
+
     private func swipeOffset(for city: SavedCity, isHome: Bool) -> CGFloat {
         let base = openSwipe?.id == city.id ? (openSwipe?.offset ?? 0) : 0
         guard let live = liveSwipe, live.id == city.id else { return base }
-        let upper = isHome ? 0 : Self.actionWidth
-        return min(max(base + live.translation, -Self.actionWidth), upper)
+        let bounds = swipeBounds(base: base, isHome: isHome)
+        return min(max(base + live.translation, bounds.lowerBound), bounds.upperBound)
     }
 
     private func swipeGesture(for city: SavedCity, isHome: Bool) -> RowSwipeGesture {
@@ -136,8 +144,8 @@ struct TimeGridView: View {
                 // Recompute from the recognizer's final translation; a fast
                 // flick can end before any .changed update landed in state.
                 let base = openSwipe?.id == city.id ? (openSwipe?.offset ?? 0) : 0
-                let upper = isHome ? 0 : Self.actionWidth
-                let final = min(max(base + translation, -Self.actionWidth), upper)
+                let bounds = swipeBounds(base: base, isHome: isHome)
+                let final = min(max(base + translation, bounds.lowerBound), bounds.upperBound)
                 liveSwipe = nil
                 withAnimation(.snappy(duration: 0.25)) {
                     if final < -Self.actionWidth / 2 {
@@ -243,9 +251,10 @@ struct TimeGridView: View {
 
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) {
-                        VStack(spacing: Self.rowSpacing) {
-                            // Zero-height anchor row: gives each column a unique
-                            // scroll id without duplicating ids across city rows.
+                        // The anchor row lives outside the VStack: as a child
+                        // it would add one row-spacing and shift every hour
+                        // strip below its city card.
+                        ZStack(alignment: .topLeading) {
                             HStack(spacing: 0) {
                                 ForEach(0..<Self.hourCount, id: \.self) { i in
                                     Color.clear
@@ -255,6 +264,7 @@ struct TimeGridView: View {
                             }
                             .frame(height: 0)
 
+                            VStack(spacing: Self.rowSpacing) {
                             ForEach(store.cities) { city in
                                 HourRowView(
                                     city: city,
@@ -268,6 +278,7 @@ struct TimeGridView: View {
                                     isLifting(city.id) ? nil : .snappy(duration: 0.2),
                                     value: rowOffset(for: city.id)
                                 )
+                            }
                             }
                         }
                         .padding(.leading, 10)
@@ -355,6 +366,7 @@ private struct CityLabelView: View {
             Color(.secondarySystemBackground),
             in: RoundedRectangle(cornerRadius: 12)
         )
+        .clipShape(RoundedRectangle(cornerRadius: 12))
         .contentShape(RoundedRectangle(cornerRadius: 12))
     }
 }
