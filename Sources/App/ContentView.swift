@@ -3,6 +3,7 @@ import SwiftUI
 struct ContentView: View {
     @EnvironmentObject private var store: AppStore
     @State private var showingSearch = false
+    @State private var showingEdit = false
 
     private let ticker = Timer.publish(every: 20, on: .main, in: .common).autoconnect()
 
@@ -19,7 +20,7 @@ struct ContentView: View {
                             .padding(.bottom, 14)
                         Divider()
                         TimeGridView()
-                        Text("Tap an hour to preview that time everywhere.\nHold and drag a city to reorder it.")
+                        Text("Tap an hour to preview that time everywhere.\nHold and drag a city to reorder. Manage cities with Edit.")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
@@ -35,6 +36,9 @@ struct ContentView: View {
                 // The empty state has its own Add City button; one entry
                 // point at a time.
                 if !store.cities.isEmpty {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Edit") { showingEdit = true }
+                    }
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
                             showingSearch = true
@@ -46,6 +50,9 @@ struct ContentView: View {
             }
             .sheet(isPresented: $showingSearch) {
                 CitySearchView()
+            }
+            .sheet(isPresented: $showingEdit) {
+                EditCitiesView()
             }
             .onReceive(ticker) { store.now = $0 }
         }

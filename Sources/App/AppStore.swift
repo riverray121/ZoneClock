@@ -50,9 +50,11 @@ final class AppStore: ObservableObject {
         if homeID == nil { homeID = cities.first?.id }
     }
 
-    func remove(_ id: UUID) {
-        cities.removeAll { $0.id == id }
-        if homeID == id { homeID = cities.first?.id }
+    func remove(atOffsets offsets: IndexSet) {
+        cities.remove(atOffsets: offsets)
+        if let home = homeID, !cities.contains(where: { $0.id == home }) {
+            homeID = cities.first?.id
+        }
     }
 
     func setHome(_ id: UUID) {

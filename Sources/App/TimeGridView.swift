@@ -87,16 +87,16 @@ struct TimeGridView: View {
             .sequenced(before: DragGesture(minimumDistance: 0))
             .updating($rowDrag) { value, state, _ in
                 switch value {
-                case .first(true):
+                case .second(true, nil):
                     state = .pressing(city.id)
-                case .second(true, let drag):
-                    state = .dragging(city.id, drag?.translation.height ?? 0)
+                case .second(true, let drag?):
+                    state = .dragging(city.id, drag.translation.height)
                 default:
                     state = .inactive
                 }
             }
             .onChanged { value in
-                if case .first(true) = value {
+                if case .second(true, nil) = value {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 }
             }
@@ -218,8 +218,6 @@ private struct CityLabelView: View {
                         .font(.caption2)
                         .foregroundStyle(.tint)
                 }
-                Spacer(minLength: 0)
-                optionsMenu
             }
             HStack(spacing: 4) {
                 Text(city.subtitle)
@@ -254,30 +252,6 @@ private struct CityLabelView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
-    }
-
-    private var optionsMenu: some View {
-        Menu {
-            if !isHome {
-                Button {
-                    store.setHome(city.id)
-                } label: {
-                    Label("Set as Home", systemImage: "house")
-                }
-            }
-            Button(role: .destructive) {
-                withAnimation { store.remove(city.id) }
-            } label: {
-                Label("Remove City", systemImage: "trash")
-            }
-        } label: {
-            Image(systemName: "ellipsis.circle")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .frame(width: 26, height: 26)
-                .contentShape(Rectangle())
-        }
-        .accessibilityIdentifier("options-\(city.name)")
     }
 }
 

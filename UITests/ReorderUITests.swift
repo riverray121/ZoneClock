@@ -54,17 +54,32 @@ final class ReorderUITests: XCTestCase {
         )
     }
 
-    func testOptionsMenuOpensFromButton() {
+    func testEditSheetSetsHomeAndRemoves() {
         let app = launchSeededApp()
-        let options = app.buttons["options-Boston"].firstMatch
-        XCTAssertTrue(options.waitForExistence(timeout: 5))
+        let edit = app.buttons["Edit"].firstMatch
+        XCTAssertTrue(edit.waitForExistence(timeout: 5))
+        edit.tap()
 
-        options.tap()
-
+        let sheetBoston = app.buttons.containing(.staticText, identifier: "Boston").firstMatch
+        XCTAssertTrue(sheetBoston.waitForExistence(timeout: 3))
+        sheetBoston.tap()
         XCTAssertTrue(
-            app.buttons["Remove City"].waitForExistence(timeout: 3),
-            "The options button should open the city menu"
+            app.staticTexts["Home"].waitForExistence(timeout: 3),
+            "Tapping a city in the edit sheet should mark it as home"
         )
-        XCTAssertTrue(app.buttons["Set as Home"].exists)
+
+        let sheetCairo = app.buttons.containing(.staticText, identifier: "Cairo").firstMatch
+        sheetCairo.swipeLeft()
+        let delete = app.buttons["Delete"].firstMatch
+        XCTAssertTrue(delete.waitForExistence(timeout: 3))
+        delete.tap()
+
+        app.buttons["Done"].firstMatch.tap()
+        XCTAssertTrue(
+            app.staticTexts["Boston"].firstMatch.waitForExistence(timeout: 3))
+        XCTAssertFalse(
+            app.staticTexts["Cairo"].firstMatch.exists,
+            "Cairo should be gone from the board after deletion"
+        )
     }
 }
