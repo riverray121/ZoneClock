@@ -5,15 +5,15 @@ import UIKit
 /// grid of hour cells. Every column is one absolute instant; each row renders
 /// it in that city's time zone. Tapping a cell selects that instant.
 ///
-/// Reordering is a custom hold-then-drag gesture that moves the actual row
-/// under the finger; city options live behind an explicit menu button. The
-/// two interactions share no gesture, so neither can swallow the other.
+/// Interactions: hold and drag a row to reorder (the top city is home), tap
+/// a city label to reveal its remove button. The drag is UIKit-backed so
+/// vertical scrolling from the label column still works.
 struct TimeGridView: View {
     @EnvironmentObject private var store: AppStore
 
-    /// Resets automatically when the gesture ends or is cancelled, so lift
-    /// styling and row offsets can never outlive a drag.
-    @GestureState private var rowDrag: RowDrag = .inactive
+    @State private var activeDrag: (id: UUID, translation: CGFloat)?
+    /// City currently showing its remove button.
+    @State private var editingID: UUID?
 
     static let cellWidth: CGFloat = 56
     static let rowHeight: CGFloat = 92
@@ -22,20 +22,6 @@ struct TimeGridView: View {
     static let hourCount = 72
 
     private static let dragStep = rowHeight + rowSpacing
-
-    private enum RowDrag {
-        case inactive
-        case pressing(UUID)
-        case dragging(UUID, CGFloat)
-
-        func isLifting(_ id: UUID) -> Bool {
-            switch self {
-            case .pressing(let p): p == id
-            case .dragging(let d, _): d == id
-            case .inactive: false
-            }
-        }
-    }
 
     /// Hourly instants covering yesterday through tomorrow in home time,
     /// anchored to the current day so tapping a column never re-bases the
@@ -68,51 +54,50 @@ struct TimeGridView: View {
     }
 
     /// The saved-city array is never mutated while the finger is down; a
-    /// structural reorder would cancel the in-flight gesture. Rows shift
+    /// structural reorder would break the in-flight gesture. Rows shift
     /// visually via these offsets and the move commits once, on release.
     private func rowOffset(for id: UUID) -> CGFloat {
-        guard case .dragging(let dragID, let translation) = rowDrag,
-              let from = store.cities.firstIndex(where: { $0.id == dragID })
+        guard let drag = activeDrag,
+              let from = store.cities.firstIndex(where: { $0.id == drag.id })
         else { return 0 }
-        if dragID == id { return translation }
+        if drag.id == id { return drag.translation }
         guard let j = store.cities.firstIndex(where: { $0.id == id }) else { return 0 }
-        let to = targetIndex(from: from, translation: translation)
+        let to = targetIndex(from: from, translation: drag.translation)
         if from < to, j > from, j <= to { return -Self.dragStep }
         if to < from, j >= to, j < from { return Self.dragStep }
         return 0
     }
 
-    private func reorderGesture(for city: SavedCity) -> some Gesture {
-        LongPressGesture(minimumDuration: 0.3)
-            .sequenced(before: DragGesture(minimumDistance: 0))
-            .updating($rowDrag) { value, state, _ in
-                switch value {
-                case .second(true, nil):
-                    state = .pressing(city.id)
-                case .second(true, let drag?):
-                    state = .dragging(city.id, drag.translation.height)
-                default:
-                    state = .inactive
-                }
-            }
-            .onChanged { value in
-                if case .second(true, nil) = value {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                }
-            }
-            .onEnded { value in
-                guard case .second(true, let drag?) = value,
-                      let from = store.cities.firstIndex(where: { $0.id == city.id })
-                else { return }
-                let to = targetIndex(from: from, translation: drag.translation.height)
-                guard to != from else { return }
-                withAnimation(.snappy(duration: 0.25)) {
-                    store.cities.move(
-                        fromOffsets: IndexSet(integer: from),
-                        toOffset: to > from ? to + 1 : to
-                    )
-                }
-            }
+    private func isLifting(_ id: UUID) -> Bool {
+        activeDrag?.id == id
+    }
+
+    private func dragGesture(for city: SavedCity) -> RowDragGesture {
+        RowDragGesture(
+            onBegan: {
+                editingID = nil
+                activeDrag = (city.id, 0)
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            },
+            onChanged: { activeDrag = (city.id, $0) },
+            onEnded: { translation in
+                commitMove(city, translation: translation)
+                activeDrag = nil
+            },
+            onCancelled: { activeDrag = nil }
+        )
+    }
+
+    private func commitMove(_ city: SavedCity, translation: CGFloat) {
+        guard let from = store.cities.firstIndex(where: { $0.id == city.id }) else { return }
+        let to = targetIndex(from: from, translation: translation)
+        guard to != from else { return }
+        withAnimation(.snappy(duration: 0.25)) {
+            store.cities.move(
+                fromOffsets: IndexSet(integer: from),
+                toOffset: to > from ? to + 1 : to
+            )
+        }
     }
 
     var body: some View {
@@ -123,20 +108,29 @@ struct TimeGridView: View {
             HStack(alignment: .top, spacing: 0) {
                 VStack(spacing: Self.rowSpacing) {
                     ForEach(store.cities) { city in
-                        CityLabelView(city: city, isHome: city.id == store.home?.id)
-                            .frame(height: Self.rowHeight)
-                            .scaleEffect(rowDrag.isLifting(city.id) ? 1.04 : 1)
-                            .shadow(
-                                color: .black.opacity(rowDrag.isLifting(city.id) ? 0.18 : 0),
-                                radius: 7, y: 3
-                            )
-                            .offset(y: rowOffset(for: city.id))
-                            .zIndex(rowDrag.isLifting(city.id) ? 2 : 0)
-                            .gesture(reorderGesture(for: city))
-                            .animation(
-                                rowDrag.isLifting(city.id) ? nil : .snappy(duration: 0.2),
-                                value: rowOffset(for: city.id)
-                            )
+                        CityLabelView(
+                            city: city,
+                            isHome: city.id == store.home?.id,
+                            isEditing: editingID == city.id
+                        )
+                        .frame(height: Self.rowHeight)
+                        .scaleEffect(isLifting(city.id) ? 1.04 : 1)
+                        .shadow(
+                            color: .black.opacity(isLifting(city.id) ? 0.18 : 0),
+                            radius: 7, y: 3
+                        )
+                        .offset(y: rowOffset(for: city.id))
+                        .zIndex(isLifting(city.id) ? 2 : 0)
+                        .onTapGesture {
+                            withAnimation(.snappy(duration: 0.15)) {
+                                editingID = editingID == city.id ? nil : city.id
+                            }
+                        }
+                        .gesture(dragGesture(for: city))
+                        .animation(
+                            isLifting(city.id) ? nil : .snappy(duration: 0.2),
+                            value: rowOffset(for: city.id)
+                        )
                     }
                 }
                 .frame(width: Self.labelWidth, alignment: .leading)
@@ -164,16 +158,28 @@ struct TimeGridView: View {
                                 )
                                 .frame(height: Self.rowHeight)
                                 .offset(y: rowOffset(for: city.id))
-                                .zIndex(rowDrag.isLifting(city.id) ? 2 : 0)
+                                .zIndex(isLifting(city.id) ? 2 : 0)
                                 .animation(
-                                    rowDrag.isLifting(city.id) ? nil : .snappy(duration: 0.2),
+                                    isLifting(city.id) ? nil : .snappy(duration: 0.2),
                                     value: rowOffset(for: city.id)
                                 )
                             }
                         }
-                        .padding(.leading, 8)
+                        .padding(.leading, 10)
                         .padding(.trailing, 16)
                     }
+                    // Cells fade out as they approach the label column
+                    // instead of clipping at a hard edge.
+                    .mask(
+                        HStack(spacing: 0) {
+                            LinearGradient(
+                                colors: [.clear, .black],
+                                startPoint: .leading, endPoint: .trailing
+                            )
+                            .frame(width: 20)
+                            Rectangle().fill(.black)
+                        }
+                    )
                     .onAppear {
                         if let idx = selectedIndex {
                             proxy.scrollTo(max(idx - 1, 0), anchor: .leading)
@@ -195,6 +201,13 @@ struct TimeGridView: View {
             }
             .padding(.vertical, 14)
         }
+        // The remove button is transient; put it away on its own if the
+        // user does something else.
+        .task(id: editingID) {
+            guard editingID != nil else { return }
+            try? await Task.sleep(for: .seconds(5))
+            withAnimation { editingID = nil }
+        }
     }
 }
 
@@ -202,6 +215,7 @@ private struct CityLabelView: View {
     @EnvironmentObject private var store: AppStore
     let city: SavedCity
     let isHome: Bool
+    let isEditing: Bool
 
     var body: some View {
         let tz = city.timeZone
@@ -217,6 +231,21 @@ private struct CityLabelView: View {
                     Image(systemName: "house.fill")
                         .font(.caption2)
                         .foregroundStyle(.tint)
+                        .accessibilityIdentifier("home-\(city.name)")
+                }
+                Spacer(minLength: 0)
+                if isEditing {
+                    Button {
+                        withAnimation(.snappy(duration: 0.2)) {
+                            store.removeCity(city.id)
+                        }
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title3)
+                            .foregroundStyle(.white, .red)
+                    }
+                    .accessibilityIdentifier("remove-\(city.name)")
+                    .transition(.scale.combined(with: .opacity))
                 }
             }
             HStack(spacing: 4) {

@@ -3,14 +3,13 @@ import Combine
 
 @MainActor
 final class AppStore: ObservableObject {
+    /// The first city is the home (reference) city; reordering changes it.
     @Published var cities: [SavedCity] = [] { didSet { persist() } }
-    @Published var homeID: UUID? { didSet { persist() } }
     /// nil means "follow the current time".
     @Published var selection: Date?
     @Published var now = Date()
 
     private static let citiesKey = "overlap.cities"
-    private static let homeKey = "overlap.homeID"
     private var loaded = false
 
     init() {
@@ -24,22 +23,17 @@ final class AppStore: ObservableObject {
                     name: String(f[0]), region: String(f[1]),
                     country: String(f[2]), tzID: String(f[3]), population: 0))
             }
-            homeID = cities.first?.id
+            loaded = true
             return
         }
         if let data = UserDefaults.standard.data(forKey: Self.citiesKey),
            let saved = try? JSONDecoder().decode([SavedCity].self, from: data) {
             cities = saved
-            if let raw = UserDefaults.standard.string(forKey: Self.homeKey) {
-                homeID = UUID(uuidString: raw)
-            }
         }
         loaded = true
     }
 
-    var home: SavedCity? {
-        cities.first(where: { $0.id == homeID }) ?? cities.first
-    }
+    var home: SavedCity? { cities.first }
 
     var homeTimeZone: TimeZone { home?.timeZone ?? .current }
 
@@ -47,21 +41,10 @@ final class AppStore: ObservableObject {
 
     func add(_ city: City) {
         cities.append(SavedCity(city: city))
-        if homeID == nil { homeID = cities.first?.id }
     }
 
-    func remove(atOffsets offsets: IndexSet) {
-        cities.remove(atOffsets: offsets)
-        if let home = homeID, !cities.contains(where: { $0.id == home }) {
-            homeID = cities.first?.id
-        }
-    }
-
-    func setHome(_ id: UUID) {
-        guard let idx = cities.firstIndex(where: { $0.id == id }) else { return }
-        let city = cities.remove(at: idx)
-        cities.insert(city, at: 0)
-        homeID = id
+    func removeCity(_ id: UUID) {
+        cities.removeAll { $0.id == id }
     }
 
     private func persist() {
@@ -69,6 +52,5 @@ final class AppStore: ObservableObject {
         if let data = try? JSONEncoder().encode(cities) {
             UserDefaults.standard.set(data, forKey: Self.citiesKey)
         }
-        UserDefaults.standard.set(homeID?.uuidString, forKey: Self.homeKey)
     }
 }

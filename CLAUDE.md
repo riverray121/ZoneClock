@@ -5,7 +5,7 @@ and day offset in every saved city. See README.md for features and layout.
 
 ## Stack
 
-- Swift / SwiftUI, iOS 17+
+- Swift / SwiftUI, iOS 18+
 - XcodeGen: project generated from `project.yml`; the `.xcodeproj` is not
   committed. Regenerate after editing `project.yml`.
 - No dependencies, no network. City data is a bundled GeoNames extract.

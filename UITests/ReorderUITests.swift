@@ -1,24 +1,27 @@
 import XCTest
 
 final class ReorderUITests: XCTestCase {
-    private func launchSeededApp() -> XCUIApplication {
+    private static let defaultCities = [
+        "Taipei|Taiwan|Taiwan|Asia/Taipei",
+        "Boston|Massachusetts|United States|America/New_York",
+        "Cairo|Cairo|Egypt|Africa/Cairo",
+    ]
+
+    private func launchSeededApp(cities: [String] = ReorderUITests.defaultCities) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchEnvironment["UITEST_CITIES"] = [
-            "Taipei|Taiwan|Taiwan|Asia/Taipei",
-            "Boston|Massachusetts|United States|America/New_York",
-            "Cairo|Cairo|Egypt|Africa/Cairo",
-        ].joined(separator: ";")
+        app.launchEnvironment["UITEST_CITIES"] = cities.joined(separator: ";")
         app.launch()
         return app
     }
 
-    func testHoldAndDragReordersRows() {
+    func testHoldAndDragReordersAndChangesHome() {
         let app = launchSeededApp()
         let taipei = app.staticTexts["Taipei"].firstMatch
         let cairo = app.staticTexts["Cairo"].firstMatch
         XCTAssertTrue(taipei.waitForExistence(timeout: 5))
         XCTAssertTrue(cairo.exists)
         XCTAssertLessThan(taipei.frame.minY, cairo.frame.minY)
+        XCTAssertTrue(app.images["home-Taipei"].exists)
 
         cairo.press(
             forDuration: 0.6, thenDragTo: taipei,
@@ -32,6 +35,10 @@ final class ReorderUITests: XCTestCase {
         XCTAssertEqual(
             XCTWaiter.wait(for: [done], timeout: 5), .completed,
             "Cairo should sit above Taipei after the drag"
+        )
+        XCTAssertTrue(
+            app.images["home-Cairo"].waitForExistence(timeout: 3),
+            "The top city should become home"
         )
     }
 
@@ -54,32 +61,59 @@ final class ReorderUITests: XCTestCase {
         )
     }
 
-    func testEditSheetSetsHomeAndRemoves() {
+    func testTapRevealsRemoveButton() {
         let app = launchSeededApp()
-        let edit = app.buttons["Edit"].firstMatch
-        XCTAssertTrue(edit.waitForExistence(timeout: 5))
-        edit.tap()
+        let boston = app.staticTexts["Boston"].firstMatch
+        XCTAssertTrue(boston.waitForExistence(timeout: 5))
 
-        let sheetBoston = app.buttons.containing(.staticText, identifier: "Boston").firstMatch
-        XCTAssertTrue(sheetBoston.waitForExistence(timeout: 3))
-        sheetBoston.tap()
+        boston.tap()
+        let remove = app.buttons["remove-Boston"].firstMatch
         XCTAssertTrue(
-            app.staticTexts["Home"].waitForExistence(timeout: 3),
-            "Tapping a city in the edit sheet should mark it as home"
+            remove.waitForExistence(timeout: 3),
+            "Tapping a city should reveal its remove button"
         )
+        remove.tap()
 
-        let sheetCairo = app.buttons.containing(.staticText, identifier: "Cairo").firstMatch
-        sheetCairo.swipeLeft()
-        let delete = app.buttons["Delete"].firstMatch
-        XCTAssertTrue(delete.waitForExistence(timeout: 3))
-        delete.tap()
+        let gone = NSPredicate { _, _ in
+            !app.staticTexts["Boston"].firstMatch.exists
+        }
+        let done = XCTNSPredicateExpectation(predicate: gone, object: nil)
+        XCTAssertEqual(
+            XCTWaiter.wait(for: [done], timeout: 5), .completed,
+            "Boston should be removed from the board"
+        )
+    }
 
-        app.buttons["Done"].firstMatch.tap()
-        XCTAssertTrue(
-            app.staticTexts["Boston"].firstMatch.waitForExistence(timeout: 3))
-        XCTAssertFalse(
-            app.staticTexts["Cairo"].firstMatch.exists,
-            "Cairo should be gone from the board after deletion"
+    func testVerticalScrollWorksFromCityColumn() {
+        let manyCities = [
+            "Taipei|Taiwan|Taiwan|Asia/Taipei",
+            "Boston|Massachusetts|United States|America/New_York",
+            "Cairo|Cairo|Egypt|Africa/Cairo",
+            "London|England|United Kingdom|Europe/London",
+            "Sydney|New South Wales|Australia|Australia/Sydney",
+            "Tokyo|Tokyo|Japan|Asia/Tokyo",
+            "Paris|Ile-de-France|France|Europe/Paris",
+            "Denver|Colorado|United States|America/Denver",
+            "Mumbai|Maharashtra|India|Asia/Kolkata",
+        ]
+        let app = launchSeededApp(cities: manyCities)
+        let taipei = app.staticTexts["Taipei"].firstMatch
+        XCTAssertTrue(taipei.waitForExistence(timeout: 5))
+        let before = taipei.frame.minY
+
+        // A quick drag on the label column, no hold first, must scroll.
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.6))
+        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.25))
+        start.press(forDuration: 0.05, thenDragTo: end)
+
+        let scrolled = NSPredicate { _, _ in
+            !taipei.exists || taipei.frame.minY < before - 50
+        }
+        let done = XCTNSPredicateExpectation(predicate: scrolled, object: nil)
+        XCTAssertEqual(
+            XCTWaiter.wait(for: [done], timeout: 5), .completed,
+            "Swiping on the city column should scroll the board"
         )
     }
 }
+
