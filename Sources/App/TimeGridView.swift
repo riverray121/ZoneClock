@@ -1,10 +1,12 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The city board: a fixed label column and a shared horizontally scrolling
 /// grid of hour cells. Every column is one absolute instant; each row renders
 /// it in that city's time zone. Tapping a cell selects that instant.
 struct TimeGridView: View {
     @EnvironmentObject private var store: AppStore
+    @State private var draggingID: UUID?
 
     static let cellWidth: CGFloat = 56
     static let rowHeight: CGFloat = 92
@@ -46,6 +48,19 @@ struct TimeGridView: View {
                     ForEach(store.cities) { city in
                         CityLabelView(city: city, isHome: city.id == store.home?.id)
                             .frame(height: Self.rowHeight)
+                            .opacity(draggingID == city.id ? 0.4 : 1)
+                            .onDrag {
+                                draggingID = city.id
+                                return NSItemProvider(object: city.id.uuidString as NSString)
+                            }
+                            .onDrop(
+                                of: [.text],
+                                delegate: CityReorderDelegate(
+                                    cityID: city.id,
+                                    draggingID: $draggingID,
+                                    store: store
+                                )
+                            )
                     }
                 }
                 .frame(width: Self.labelWidth, alignment: .leading)
@@ -105,6 +120,7 @@ private struct CityLabelView: View {
     @EnvironmentObject private var store: AppStore
     let city: SavedCity
     let isHome: Bool
+    @State private var showingOptions = false
 
     var body: some View {
         let tz = city.timeZone
@@ -155,18 +171,17 @@ private struct CityLabelView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
-        .contextMenu {
+        .onTapGesture { showingOptions = true }
+        .confirmationDialog(
+            city.name, isPresented: $showingOptions, titleVisibility: .visible
+        ) {
             if !isHome {
-                Button {
+                Button("Set as Home") {
                     store.setHome(city.id)
-                } label: {
-                    Label("Set as Home", systemImage: "house")
                 }
             }
-            Button(role: .destructive) {
+            Button("Remove City", role: .destructive) {
                 withAnimation { store.remove(city.id) }
-            } label: {
-                Label("Remove City", systemImage: "trash")
             }
         }
     }
@@ -259,5 +274,34 @@ private struct HourCell: View {
         case 6, 7, 18...21: Color.yellow.opacity(0.18)
         default: Color.primary.opacity(0.06)
         }
+    }
+}
+
+/// Live-reorders the city list while a dragged label passes over other rows.
+private struct CityReorderDelegate: DropDelegate {
+    let cityID: UUID
+    @Binding var draggingID: UUID?
+    let store: AppStore
+
+    func dropEntered(info: DropInfo) {
+        guard let dragging = draggingID, dragging != cityID,
+              let from = store.cities.firstIndex(where: { $0.id == dragging }),
+              let to = store.cities.firstIndex(where: { $0.id == cityID })
+        else { return }
+        withAnimation(.snappy(duration: 0.25)) {
+            store.cities.move(
+                fromOffsets: IndexSet(integer: from),
+                toOffset: to > from ? to + 1 : to
+            )
+        }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        draggingID = nil
+        return true
     }
 }

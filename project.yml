@@ -48,6 +48,17 @@ targets:
     dependencies:
       - target: ZoneClock
 
+  ZoneClockUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+    sources:
+      - UITests
+    dependencies:
+      - target: ZoneClock
+
 schemes:
   ZoneClock:
     build:
@@ -58,3 +69,4 @@ schemes:
     test:
       targets:
         - ZoneClockTests
+        - ZoneClockUITests

@@ -14,6 +14,19 @@ final class AppStore: ObservableObject {
     private var loaded = false
 
     init() {
+        // UI tests inject a fixed board: "Name|Region|Country|tzID" rows
+        // separated by ";".
+        if let seed = ProcessInfo.processInfo.environment["UITEST_CITIES"] {
+            cities = seed.split(separator: ";").compactMap { row in
+                let f = row.split(separator: "|", omittingEmptySubsequences: false)
+                guard f.count == 4 else { return nil }
+                return SavedCity(city: City(
+                    name: String(f[0]), region: String(f[1]),
+                    country: String(f[2]), tzID: String(f[3]), population: 0))
+            }
+            homeID = cities.first?.id
+            return
+        }
         if let data = UserDefaults.standard.data(forKey: Self.citiesKey),
            let saved = try? JSONDecoder().decode([SavedCity].self, from: data) {
             cities = saved

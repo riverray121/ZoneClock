@@ -10,8 +10,8 @@ you follow. Works fully offline.
 
 ## Features
 
-- Board of saved cities, home city pinned first. Long-press a city to set it
-  as home or remove it.
+- Board of saved cities. Tap a city to set it as home or remove it; press
+  and drag a city to reorder the board.
 - 48-hour grid (selected day plus the next, in home time). Each column is one
   absolute instant rendered in each city's local time; tap a cell to select
   that time everywhere. Cells are shaded by local waking hours: green for
