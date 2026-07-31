@@ -1,23 +1,41 @@
 import SwiftUI
-import UniformTypeIdentifiers
+import UIKit
 
 /// The city board: a fixed label column and a shared horizontally scrolling
 /// grid of hour cells. Every column is one absolute instant; each row renders
 /// it in that city's time zone. Tapping a cell selects that instant.
 ///
-/// Rows reorder through the system drag session: a stationary long press
-/// opens the context menu, moving after the lift starts the drag. The
-/// dragged row is hidden while its drag preview is on screen, so only one
-/// image of it is ever visible.
+/// Reordering is a custom hold-then-drag gesture that moves the actual row
+/// under the finger; city options live behind an explicit menu button. The
+/// two interactions share no gesture, so neither can swallow the other.
 struct TimeGridView: View {
     @EnvironmentObject private var store: AppStore
-    @State private var draggingID: UUID?
+
+    /// Resets automatically when the gesture ends or is cancelled, so lift
+    /// styling and row offsets can never outlive a drag.
+    @GestureState private var rowDrag: RowDrag = .inactive
 
     static let cellWidth: CGFloat = 56
     static let rowHeight: CGFloat = 92
     static let rowSpacing: CGFloat = 16
     static let labelWidth: CGFloat = 150
     static let hourCount = 72
+
+    private static let dragStep = rowHeight + rowSpacing
+
+    private enum RowDrag {
+        case inactive
+        case pressing(UUID)
+        case dragging(UUID, CGFloat)
+
+        func isLifting(_ id: UUID) -> Bool {
+            switch self {
+            case .pressing(let p): p == id
+            case .dragging(let d, _): d == id
+            case .inactive: false
+            }
+        }
+    }
 
     /// Hourly instants covering yesterday through tomorrow in home time,
     /// anchored to the current day so tapping a column never re-bases the
@@ -43,6 +61,60 @@ struct TimeGridView: View {
         return (0..<Self.hourCount).contains(idx) ? idx : nil
     }
 
+    /// Where the dragged row would land if released now.
+    private func targetIndex(from: Int, translation: CGFloat) -> Int {
+        let raw = from + Int((translation / Self.dragStep).rounded())
+        return min(max(raw, 0), store.cities.count - 1)
+    }
+
+    /// The saved-city array is never mutated while the finger is down; a
+    /// structural reorder would cancel the in-flight gesture. Rows shift
+    /// visually via these offsets and the move commits once, on release.
+    private func rowOffset(for id: UUID) -> CGFloat {
+        guard case .dragging(let dragID, let translation) = rowDrag,
+              let from = store.cities.firstIndex(where: { $0.id == dragID })
+        else { return 0 }
+        if dragID == id { return translation }
+        guard let j = store.cities.firstIndex(where: { $0.id == id }) else { return 0 }
+        let to = targetIndex(from: from, translation: translation)
+        if from < to, j > from, j <= to { return -Self.dragStep }
+        if to < from, j >= to, j < from { return Self.dragStep }
+        return 0
+    }
+
+    private func reorderGesture(for city: SavedCity) -> some Gesture {
+        LongPressGesture(minimumDuration: 0.3)
+            .sequenced(before: DragGesture(minimumDistance: 0))
+            .updating($rowDrag) { value, state, _ in
+                switch value {
+                case .first(true):
+                    state = .pressing(city.id)
+                case .second(true, let drag):
+                    state = .dragging(city.id, drag?.translation.height ?? 0)
+                default:
+                    state = .inactive
+                }
+            }
+            .onChanged { value in
+                if case .first(true) = value {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                }
+            }
+            .onEnded { value in
+                guard case .second(true, let drag?) = value,
+                      let from = store.cities.firstIndex(where: { $0.id == city.id })
+                else { return }
+                let to = targetIndex(from: from, translation: drag.translation.height)
+                guard to != from else { return }
+                withAnimation(.snappy(duration: 0.25)) {
+                    store.cities.move(
+                        fromOffsets: IndexSet(integer: from),
+                        toOffset: to > from ? to + 1 : to
+                    )
+                }
+            }
+    }
+
     var body: some View {
         let start = timelineStart
         let instants = instants(from: start)
@@ -53,18 +125,17 @@ struct TimeGridView: View {
                     ForEach(store.cities) { city in
                         CityLabelView(city: city, isHome: city.id == store.home?.id)
                             .frame(height: Self.rowHeight)
-                            .opacity(draggingID == city.id ? 0 : 1)
-                            .onDrag {
-                                draggingID = city.id
-                                return NSItemProvider(object: city.id.uuidString as NSString)
-                            }
-                            .onDrop(
-                                of: [.text],
-                                delegate: CityReorderDelegate(
-                                    cityID: city.id,
-                                    draggingID: $draggingID,
-                                    store: store
-                                )
+                            .scaleEffect(rowDrag.isLifting(city.id) ? 1.04 : 1)
+                            .shadow(
+                                color: .black.opacity(rowDrag.isLifting(city.id) ? 0.18 : 0),
+                                radius: 7, y: 3
+                            )
+                            .offset(y: rowOffset(for: city.id))
+                            .zIndex(rowDrag.isLifting(city.id) ? 2 : 0)
+                            .gesture(reorderGesture(for: city))
+                            .animation(
+                                rowDrag.isLifting(city.id) ? nil : .snappy(duration: 0.2),
+                                value: rowOffset(for: city.id)
                             )
                     }
                 }
@@ -92,7 +163,12 @@ struct TimeGridView: View {
                                     selectedIndex: selectedIndex
                                 )
                                 .frame(height: Self.rowHeight)
-                                .opacity(draggingID == city.id ? 0.3 : 1)
+                                .offset(y: rowOffset(for: city.id))
+                                .zIndex(rowDrag.isLifting(city.id) ? 2 : 0)
+                                .animation(
+                                    rowDrag.isLifting(city.id) ? nil : .snappy(duration: 0.2),
+                                    value: rowOffset(for: city.id)
+                                )
                             }
                         }
                         .padding(.leading, 8)
@@ -119,53 +195,6 @@ struct TimeGridView: View {
             }
             .padding(.vertical, 14)
         }
-        // Catches drops released between rows so the hidden row always
-        // reappears; the tap is a last-resort reset if a drag session ends
-        // with no drop at all.
-        .onDrop(of: [.text], delegate: BoardDropDelegate(draggingID: $draggingID))
-        .simultaneousGesture(TapGesture().onEnded { draggingID = nil })
-    }
-}
-
-/// Live-reorders the city list while a dragged label passes over other rows.
-private struct CityReorderDelegate: DropDelegate {
-    let cityID: UUID
-    @Binding var draggingID: UUID?
-    let store: AppStore
-
-    func dropEntered(info: DropInfo) {
-        guard let dragging = draggingID, dragging != cityID,
-              let from = store.cities.firstIndex(where: { $0.id == dragging }),
-              let to = store.cities.firstIndex(where: { $0.id == cityID })
-        else { return }
-        withAnimation(.snappy(duration: 0.25)) {
-            store.cities.move(
-                fromOffsets: IndexSet(integer: from),
-                toOffset: to > from ? to + 1 : to
-            )
-        }
-    }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        draggingID = nil
-        return true
-    }
-}
-
-private struct BoardDropDelegate: DropDelegate {
-    @Binding var draggingID: UUID?
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        draggingID = nil
-        return true
     }
 }
 
@@ -189,6 +218,8 @@ private struct CityLabelView: View {
                         .font(.caption2)
                         .foregroundStyle(.tint)
                 }
+                Spacer(minLength: 0)
+                optionsMenu
             }
             HStack(spacing: 4) {
                 Text(city.subtitle)
@@ -223,7 +254,10 @@ private struct CityLabelView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
-        .contextMenu {
+    }
+
+    private var optionsMenu: some View {
+        Menu {
             if !isHome {
                 Button {
                     store.setHome(city.id)
@@ -236,7 +270,14 @@ private struct CityLabelView: View {
             } label: {
                 Label("Remove City", systemImage: "trash")
             }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .frame(width: 26, height: 26)
+                .contentShape(Rectangle())
         }
+        .accessibilityIdentifier("options-\(city.name)")
     }
 }
 
