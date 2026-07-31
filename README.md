@@ -13,7 +13,7 @@ you follow. Works fully offline.
 - Board of saved cities. The top city is home; hold and drag a city to
   reorder the board (and change home). Tap a city to reveal its remove
   button.
-- 48-hour grid (selected day plus the next, in home time). Each column is one
+- 72-hour grid (yesterday through tomorrow in home time). Each column is one
   absolute instant rendered in each city's local time; tap a cell to select
   that time everywhere. Cells are shaded by local waking hours: green for
   8:00-17:59, yellow for early morning and evening, gray for night.
