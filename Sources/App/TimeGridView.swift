@@ -240,7 +240,7 @@ struct TimeGridView: View {
         let instants = instants(from: start)
         let selectedIndex = indexOfSelection(from: start)
         ScrollView(.vertical) {
-            HStack(alignment: .top, spacing: 0) {
+            HStack(alignment: .top, spacing: 12) {
                 VStack(spacing: Self.rowSpacing) {
                     ForEach(store.cities) { city in
                         labelRow(for: city)
@@ -281,7 +281,6 @@ struct TimeGridView: View {
                             }
                             }
                         }
-                        .padding(.leading, 10)
                         .padding(.trailing, 16)
                     }
                     .onAppear {
