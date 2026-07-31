@@ -17,8 +17,11 @@ struct TimeGridView: View {
     @State private var liveSwipe: (id: UUID, translation: CGFloat)?
 
     static let cellWidth: CGFloat = 56
-    static let rowHeight: CGFloat = 88
-    static let rowSpacing: CGFloat = 16
+    static let rowHeight: CGFloat = 92
+    /// Height of the label card and the hour-cell band; both center in
+    /// rowHeight so rows read as one aligned line.
+    static let cardHeight: CGFloat = 76
+    static let rowSpacing: CGFloat = 14
     static let hourCount = 72
     static let actionWidth: CGFloat = 68
 
@@ -30,7 +33,7 @@ struct TimeGridView: View {
         let widest = store.cities
             .map { ($0.name as NSString).size(withAttributes: [.font: font]).width }
             .max() ?? 80
-        return min(max(widest + 34, 112), 168)
+        return min(max(widest + 44, 120), 172)
     }
 
     /// Hourly instants covering yesterday through tomorrow in home time,
@@ -160,8 +163,8 @@ struct TimeGridView: View {
             Image(systemName: "house.fill")
                 .font(.body.weight(.semibold))
                 .foregroundStyle(.white)
-                .frame(width: Self.actionWidth - 8, height: Self.rowHeight - 14)
-                .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 10))
+                .frame(width: Self.actionWidth - 8, height: Self.cardHeight)
+                .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 12))
         }
         .accessibilityIdentifier("swipe-home-\(city.name)")
     }
@@ -176,8 +179,8 @@ struct TimeGridView: View {
             Image(systemName: "trash.fill")
                 .font(.body.weight(.semibold))
                 .foregroundStyle(.white)
-                .frame(width: Self.actionWidth - 8, height: Self.rowHeight - 14)
-                .background(Color.red, in: RoundedRectangle(cornerRadius: 10))
+                .frame(width: Self.actionWidth - 8, height: Self.cardHeight)
+                .background(Color.red, in: RoundedRectangle(cornerRadius: 12))
         }
         .accessibilityIdentifier("swipe-delete-\(city.name)")
     }
@@ -199,7 +202,6 @@ struct TimeGridView: View {
                 }
             }
             CityLabelView(city: city, isHome: isHome)
-                .background(Color(.systemBackground))
                 .offset(x: sOffset)
         }
         .animation(
@@ -346,8 +348,14 @@ private struct CityLabelView: View {
                 .monospacedDigit()
                 .contentTransition(.numericText())
         }
+        .padding(.horizontal, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(Rectangle())
+        .frame(height: TimeGridView.cardHeight)
+        .background(
+            Color(.secondarySystemBackground),
+            in: RoundedRectangle(cornerRadius: 12)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 12))
     }
 }
 
@@ -409,9 +417,9 @@ private struct HourCell: View {
         .background(background)
         .overlay {
             if isSelected {
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: 10)
                     .strokeBorder(Color.accentColor, lineWidth: 2)
-                    .padding(.vertical, 14)
+                    .padding(.vertical, 8)
             }
         }
         .overlay(alignment: .leading) {
@@ -426,10 +434,10 @@ private struct HourCell: View {
     }
 
     private var background: some View {
-        RoundedRectangle(cornerRadius: 8)
+        RoundedRectangle(cornerRadius: 10)
             .fill(isSelected ? Color.accentColor.opacity(0.26) : tint)
             .padding(.horizontal, 0.5)
-            .padding(.vertical, 14)
+            .padding(.vertical, 8)
     }
 
     private var tint: Color {
