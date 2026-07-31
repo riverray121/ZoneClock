@@ -7,47 +7,56 @@ struct ContentView: View {
     private let ticker = Timer.publish(every: 20, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if store.cities.isEmpty {
-                    emptyState
-                } else {
-                    VStack(spacing: 0) {
-                        header
-                            .padding(.horizontal, 20)
-                            .padding(.top, 6)
-                            .padding(.bottom, 14)
-                        Divider()
-                        TimeGridView()
-                        Text("Tap an hour to preview that time everywhere.\nHold and drag to reorder · swipe a city for actions.")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                            .frame(maxWidth: .infinity)
-                            .padding(.horizontal, 24)
-                            .padding(.vertical, 10)
-                    }
+        VStack(spacing: 0) {
+            topBar
+                .padding(.horizontal, 20)
+                .padding(.top, 8)
+                .padding(.bottom, 8)
+            if store.cities.isEmpty {
+                emptyState
+            } else {
+                header
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 14)
+                Divider()
+                TimeGridView()
+                Text("Tap an hour to preview · hold and drag to reorder · swipe a city for actions")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 5)
+            }
+        }
+        .sheet(isPresented: $showingSearch) {
+            CitySearchView()
+        }
+        .onReceive(ticker) { store.now = $0 }
+    }
+
+    private var topBar: some View {
+        HStack {
+            HStack(spacing: 0) {
+                Text("Zone")
+                    .foregroundStyle(.tint)
+                Text("Clock")
+            }
+            .font(.system(size: 22, weight: .bold, design: .rounded))
+            Spacer()
+            // The empty state has its own Add City button; one entry
+            // point at a time.
+            if !store.cities.isEmpty {
+                Button {
+                    showingSearch = true
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title2)
+                        .symbolRenderingMode(.hierarchical)
                 }
+                .accessibilityLabel("Add City")
             }
-            .navigationTitle("ZoneClock")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                // The empty state has its own Add City button; one entry
-                // point at a time.
-                if !store.cities.isEmpty {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            showingSearch = true
-                        } label: {
-                            Label("Add City", systemImage: "plus")
-                        }
-                    }
-                }
-            }
-            .sheet(isPresented: $showingSearch) {
-                CitySearchView()
-            }
-            .onReceive(ticker) { store.now = $0 }
         }
     }
 
