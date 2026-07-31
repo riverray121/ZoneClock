@@ -5,23 +5,33 @@ import UIKit
 /// grid of hour cells. Every column is one absolute instant; each row renders
 /// it in that city's time zone. Tapping a cell selects that instant.
 ///
-/// Interactions: hold and drag a row to reorder (the top city is home), tap
-/// a city label to reveal its remove button. The drag is UIKit-backed so
-/// vertical scrolling from the label column still works.
+/// Interactions: hold and drag a row vertically to reorder (the top city is
+/// home); swipe a city label left for Delete or right for Home, Mail-style.
+/// Both gestures are UIKit-backed so vertical scrolling stays native.
 struct TimeGridView: View {
     @EnvironmentObject private var store: AppStore
 
     @State private var activeDrag: (id: UUID, translation: CGFloat)?
-    /// City currently showing its remove button.
-    @State private var editingID: UUID?
+    /// Row snapped open showing an action button (+width = home, -width = delete).
+    @State private var openSwipe: (id: UUID, offset: CGFloat)?
+    @State private var liveSwipe: (id: UUID, translation: CGFloat)?
 
     static let cellWidth: CGFloat = 56
-    static let rowHeight: CGFloat = 92
+    static let rowHeight: CGFloat = 88
     static let rowSpacing: CGFloat = 16
-    static let labelWidth: CGFloat = 150
     static let hourCount = 72
+    static let actionWidth: CGFloat = 68
 
     private static let dragStep = rowHeight + rowSpacing
+
+    /// Sized to the longest city name so short names keep the column slim.
+    private var labelWidth: CGFloat {
+        let font = UIFont.preferredFont(forTextStyle: .headline)
+        let widest = store.cities
+            .map { ($0.name as NSString).size(withAttributes: [.font: font]).width }
+            .max() ?? 80
+        return min(max(widest + 34, 112), 168)
+    }
 
     /// Hourly instants covering yesterday through tomorrow in home time,
     /// anchored to the current day so tapping a column never re-bases the
@@ -46,6 +56,8 @@ struct TimeGridView: View {
         let idx = Int(floor(store.selectedInstant.timeIntervalSince(start) / 3600))
         return (0..<Self.hourCount).contains(idx) ? idx : nil
     }
+
+    // MARK: Reorder drag
 
     /// Where the dragged row would land if released now.
     private func targetIndex(from: Int, translation: CGFloat) -> Int {
@@ -75,7 +87,7 @@ struct TimeGridView: View {
     private func dragGesture(for city: SavedCity) -> RowDragGesture {
         RowDragGesture(
             onBegan: {
-                editingID = nil
+                withAnimation { openSwipe = nil }
                 activeDrag = (city.id, 0)
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             },
@@ -100,6 +112,119 @@ struct TimeGridView: View {
         }
     }
 
+    // MARK: Swipe actions
+
+    private func swipeOffset(for city: SavedCity, isHome: Bool) -> CGFloat {
+        let base = openSwipe?.id == city.id ? (openSwipe?.offset ?? 0) : 0
+        guard let live = liveSwipe, live.id == city.id else { return base }
+        let upper = isHome ? 0 : Self.actionWidth
+        return min(max(base + live.translation, -Self.actionWidth), upper)
+    }
+
+    private func swipeGesture(for city: SavedCity, isHome: Bool) -> RowSwipeGesture {
+        RowSwipeGesture(
+            onChanged: { translation in
+                if let open = openSwipe, open.id != city.id {
+                    withAnimation { openSwipe = nil }
+                }
+                liveSwipe = (city.id, translation)
+            },
+            onEnded: { translation in
+                // Recompute from the recognizer's final translation; a fast
+                // flick can end before any .changed update landed in state.
+                let base = openSwipe?.id == city.id ? (openSwipe?.offset ?? 0) : 0
+                let upper = isHome ? 0 : Self.actionWidth
+                let final = min(max(base + translation, -Self.actionWidth), upper)
+                liveSwipe = nil
+                withAnimation(.snappy(duration: 0.25)) {
+                    if final < -Self.actionWidth / 2 {
+                        openSwipe = (city.id, -Self.actionWidth)
+                    } else if final > Self.actionWidth / 2, !isHome {
+                        openSwipe = (city.id, Self.actionWidth)
+                    } else {
+                        openSwipe = nil
+                    }
+                }
+            },
+            onCancelled: { liveSwipe = nil }
+        )
+    }
+
+    private func homeButton(for city: SavedCity) -> some View {
+        Button {
+            withAnimation(.snappy(duration: 0.25)) {
+                openSwipe = nil
+                store.makeHome(city.id)
+            }
+        } label: {
+            Image(systemName: "house.fill")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(width: Self.actionWidth - 8, height: Self.rowHeight - 14)
+                .background(Color.accentColor, in: RoundedRectangle(cornerRadius: 10))
+        }
+        .accessibilityIdentifier("swipe-home-\(city.name)")
+    }
+
+    private func deleteButton(for city: SavedCity) -> some View {
+        Button {
+            withAnimation(.snappy(duration: 0.25)) {
+                openSwipe = nil
+                store.removeCity(city.id)
+            }
+        } label: {
+            Image(systemName: "trash.fill")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(width: Self.actionWidth - 8, height: Self.rowHeight - 14)
+                .background(Color.red, in: RoundedRectangle(cornerRadius: 10))
+        }
+        .accessibilityIdentifier("swipe-delete-\(city.name)")
+    }
+
+    private func labelRow(for city: SavedCity) -> some View {
+        let isHome = city.id == store.home?.id
+        let sOffset = swipeOffset(for: city, isHome: isHome)
+        return ZStack {
+            if sOffset > 0 {
+                HStack {
+                    homeButton(for: city)
+                    Spacer(minLength: 0)
+                }
+            }
+            if sOffset < 0 {
+                HStack {
+                    Spacer(minLength: 0)
+                    deleteButton(for: city)
+                }
+            }
+            CityLabelView(city: city, isHome: isHome)
+                .background(Color(.systemBackground))
+                .offset(x: sOffset)
+        }
+        .animation(
+            liveSwipe?.id == city.id ? nil : .snappy(duration: 0.25),
+            value: sOffset
+        )
+        .frame(height: Self.rowHeight)
+        .scaleEffect(isLifting(city.id) ? 1.04 : 1)
+        .shadow(
+            color: .black.opacity(isLifting(city.id) ? 0.18 : 0),
+            radius: 7, y: 3
+        )
+        .offset(y: rowOffset(for: city.id))
+        .zIndex(isLifting(city.id) ? 2 : 0)
+        .onTapGesture {
+            withAnimation { openSwipe = nil }
+        }
+        .gesture(dragGesture(for: city))
+        .gesture(swipeGesture(for: city, isHome: isHome))
+        .animation(
+            isLifting(city.id) ? nil : .snappy(duration: 0.2),
+            value: rowOffset(for: city.id)
+        )
+    }
+
     var body: some View {
         let start = timelineStart
         let instants = instants(from: start)
@@ -108,33 +233,11 @@ struct TimeGridView: View {
             HStack(alignment: .top, spacing: 0) {
                 VStack(spacing: Self.rowSpacing) {
                     ForEach(store.cities) { city in
-                        CityLabelView(
-                            city: city,
-                            isHome: city.id == store.home?.id,
-                            isEditing: editingID == city.id
-                        )
-                        .frame(height: Self.rowHeight)
-                        .scaleEffect(isLifting(city.id) ? 1.04 : 1)
-                        .shadow(
-                            color: .black.opacity(isLifting(city.id) ? 0.18 : 0),
-                            radius: 7, y: 3
-                        )
-                        .offset(y: rowOffset(for: city.id))
-                        .zIndex(isLifting(city.id) ? 2 : 0)
-                        .onTapGesture {
-                            withAnimation(.snappy(duration: 0.15)) {
-                                editingID = editingID == city.id ? nil : city.id
-                            }
-                        }
-                        .gesture(dragGesture(for: city))
-                        .animation(
-                            isLifting(city.id) ? nil : .snappy(duration: 0.2),
-                            value: rowOffset(for: city.id)
-                        )
+                        labelRow(for: city)
                     }
                 }
-                .frame(width: Self.labelWidth, alignment: .leading)
-                .padding(.leading, 16)
+                .frame(width: labelWidth, alignment: .leading)
+                .padding(.leading, 14)
 
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -168,18 +271,6 @@ struct TimeGridView: View {
                         .padding(.leading, 10)
                         .padding(.trailing, 16)
                     }
-                    // Cells fade out as they approach the label column
-                    // instead of clipping at a hard edge.
-                    .mask(
-                        HStack(spacing: 0) {
-                            LinearGradient(
-                                colors: [.clear, .black],
-                                startPoint: .leading, endPoint: .trailing
-                            )
-                            .frame(width: 20)
-                            Rectangle().fill(.black)
-                        }
-                    )
                     .onAppear {
                         if let idx = selectedIndex {
                             proxy.scrollTo(max(idx - 1, 0), anchor: .leading)
@@ -201,13 +292,6 @@ struct TimeGridView: View {
             }
             .padding(.vertical, 14)
         }
-        // The remove button is transient; put it away on its own if the
-        // user does something else.
-        .task(id: editingID) {
-            guard editingID != nil else { return }
-            try? await Task.sleep(for: .seconds(5))
-            withAnimation { editingID = nil }
-        }
     }
 }
 
@@ -215,7 +299,6 @@ private struct CityLabelView: View {
     @EnvironmentObject private var store: AppStore
     let city: SavedCity
     let isHome: Bool
-    let isEditing: Bool
 
     var body: some View {
         let tz = city.timeZone
@@ -233,23 +316,22 @@ private struct CityLabelView: View {
                         .foregroundStyle(.tint)
                         .accessibilityIdentifier("home-\(city.name)")
                 }
-                Spacer(minLength: 0)
-                if isEditing {
-                    Button {
-                        withAnimation(.snappy(duration: 0.2)) {
-                            store.removeCity(city.id)
-                        }
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.title3)
-                            .foregroundStyle(.white, .red)
-                    }
-                    .accessibilityIdentifier("remove-\(city.name)")
-                    .transition(.scale.combined(with: .opacity))
-                }
             }
             HStack(spacing: 4) {
-                Text(city.subtitle)
+                Text(TimeUtil.weekdayString(instant, in: tz))
+                    .fontWeight(.medium)
+                if offset != 0 {
+                    Text(offset > 0 ? "+\(offset)d" : "\(offset)d")
+                        .fontWeight(.bold)
+                        .foregroundStyle(.primary)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .background(
+                            (offset > 0 ? Color.orange : Color.blue).opacity(0.2),
+                            in: Capsule()
+                        )
+                }
+                Text("· \(city.subtitle)")
                     .lineLimit(1)
                     .truncationMode(.tail)
                 if !isHome {
@@ -259,25 +341,10 @@ private struct CityLabelView: View {
             }
             .font(.caption2)
             .foregroundStyle(.secondary)
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(TimeUtil.timeString(instant, in: tz))
-                    .font(.title3.weight(.semibold))
-                    .monospacedDigit()
-                    .contentTransition(.numericText())
-                Text(TimeUtil.weekdayString(instant, in: tz))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                if offset != 0 {
-                    Text(offset > 0 ? "+\(offset)d" : "\(offset)d")
-                        .font(.caption2.weight(.bold))
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1.5)
-                        .background(
-                            (offset > 0 ? Color.orange : Color.blue).opacity(0.2),
-                            in: Capsule()
-                        )
-                }
-            }
+            Text(TimeUtil.timeString(instant, in: tz))
+                .font(.title3.weight(.semibold))
+                .monospacedDigit()
+                .contentTransition(.numericText())
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
@@ -344,7 +411,7 @@ private struct HourCell: View {
             if isSelected {
                 RoundedRectangle(cornerRadius: 8)
                     .strokeBorder(Color.accentColor, lineWidth: 2)
-                    .padding(.vertical, 16)
+                    .padding(.vertical, 14)
             }
         }
         .overlay(alignment: .leading) {
@@ -352,7 +419,7 @@ private struct HourCell: View {
                 Rectangle()
                     .fill(Color.primary.opacity(0.3))
                     .frame(width: 1.5)
-                    .padding(.vertical, 10)
+                    .padding(.vertical, 8)
             }
         }
         .contentShape(Rectangle())
@@ -362,7 +429,7 @@ private struct HourCell: View {
         RoundedRectangle(cornerRadius: 8)
             .fill(isSelected ? Color.accentColor.opacity(0.26) : tint)
             .padding(.horizontal, 0.5)
-            .padding(.vertical, 16)
+            .padding(.vertical, 14)
     }
 
     private var tint: Color {

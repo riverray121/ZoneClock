@@ -11,8 +11,8 @@ you follow. Works fully offline.
 ## Features
 
 - Board of saved cities. The top city is home; hold and drag a city to
-  reorder the board (and change home). Tap a city to reveal its remove
-  button.
+  reorder the board (and change home). Swipe a city left to delete it or
+  right to make it home, Mail-style.
 - 72-hour grid (yesterday through tomorrow in home time). Each column is one
   absolute instant rendered in each city's local time; tap a cell to select
   that time everywhere. Cells are shaded by local waking hours: green for

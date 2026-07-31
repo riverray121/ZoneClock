@@ -61,16 +61,19 @@ final class ReorderUITests: XCTestCase {
         )
     }
 
-    func testTapRevealsRemoveButton() {
+    func testSwipeLeftRevealsDelete() {
         let app = launchSeededApp()
         let boston = app.staticTexts["Boston"].firstMatch
         XCTAssertTrue(boston.waitForExistence(timeout: 5))
 
-        boston.tap()
-        let remove = app.buttons["remove-Boston"].firstMatch
+        // Start right of the name so the 90pt leftward drag stays on screen.
+        let bBase = boston.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let bStart = bBase.withOffset(CGVector(dx: 55, dy: 0))
+        bStart.press(forDuration: 0.05, thenDragTo: bBase.withOffset(CGVector(dx: -35, dy: 0)))
+        let remove = app.buttons["swipe-delete-Boston"].firstMatch
         XCTAssertTrue(
             remove.waitForExistence(timeout: 3),
-            "Tapping a city should reveal its remove button"
+            "Swiping left should reveal the delete button"
         )
         remove.tap()
 
@@ -82,6 +85,29 @@ final class ReorderUITests: XCTestCase {
             XCTWaiter.wait(for: [done], timeout: 5), .completed,
             "Boston should be removed from the board"
         )
+    }
+
+    func testSwipeRightMakesHome() {
+        let app = launchSeededApp()
+        let cairo = app.staticTexts["Cairo"].firstMatch
+        XCTAssertTrue(cairo.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.images["home-Taipei"].exists)
+
+        let cStart = cairo.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        cStart.press(forDuration: 0.05, thenDragTo: cStart.withOffset(CGVector(dx: 90, dy: 0)))
+        let home = app.buttons["swipe-home-Cairo"].firstMatch
+        XCTAssertTrue(
+            home.waitForExistence(timeout: 3),
+            "Swiping right should reveal the home button"
+        )
+        home.tap()
+
+        XCTAssertTrue(
+            app.images["home-Cairo"].waitForExistence(timeout: 3),
+            "Cairo should move to the top and become home"
+        )
+        XCTAssertLessThan(
+            cairo.frame.minY, app.staticTexts["Taipei"].firstMatch.frame.minY)
     }
 
     func testVerticalScrollWorksFromCityColumn() {

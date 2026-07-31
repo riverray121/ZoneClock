@@ -47,6 +47,13 @@ final class AppStore: ObservableObject {
         cities.removeAll { $0.id == id }
     }
 
+    /// Home is positional: moving a city to the front makes it home.
+    func makeHome(_ id: UUID) {
+        guard let idx = cities.firstIndex(where: { $0.id == id }), idx != 0 else { return }
+        let city = cities.remove(at: idx)
+        cities.insert(city, at: 0)
+    }
+
     private func persist() {
         guard loaded else { return }
         if let data = try? JSONEncoder().encode(cities) {

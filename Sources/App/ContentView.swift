@@ -19,7 +19,7 @@ struct ContentView: View {
                             .padding(.bottom, 14)
                         Divider()
                         TimeGridView()
-                        Text("Tap an hour to preview that time everywhere.\nHold and drag to reorder · top city is home · tap a city to remove.")
+                        Text("Tap an hour to preview that time everywhere.\nHold and drag to reorder · swipe a city for actions.")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
