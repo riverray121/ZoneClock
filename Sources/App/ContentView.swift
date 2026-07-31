@@ -20,14 +20,14 @@ struct ContentView: View {
                     .padding(.bottom, 14)
                 Divider()
                 TimeGridView()
-                Text("Tap an hour to preview · hold and drag to reorder · swipe a city for actions")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
+                Text("Tap an hour · hold and drag to reorder · swipe a city for actions")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+                    .minimumScaleFactor(0.85)
                     .frame(maxWidth: .infinity)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 5)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
             }
         }
         .sheet(isPresented: $showingSearch) {
@@ -43,7 +43,7 @@ struct ContentView: View {
                     .foregroundStyle(.tint)
                 Text("Clock")
             }
-            .font(.system(size: 22, weight: .bold, design: .rounded))
+            .font(.system(size: 28, weight: .bold, design: .rounded))
             Spacer()
             // The empty state has its own Add City button; one entry
             // point at a time.
@@ -52,7 +52,7 @@ struct ContentView: View {
                     showingSearch = true
                 } label: {
                     Image(systemName: "plus.circle.fill")
-                        .font(.title2)
+                        .font(.system(size: 28))
                         .symbolRenderingMode(.hierarchical)
                 }
                 .accessibilityLabel("Add City")
