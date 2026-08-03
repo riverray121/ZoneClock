@@ -15,17 +15,13 @@ you follow. Works fully offline.
 
 ## Features
 
-- Board of saved cities. The top city is home; hold and drag a city to
-  reorder the board (and change home). Swipe a city left to delete it or
-  right to make it home, Mail-style.
-- 72-hour grid (yesterday through tomorrow in home time). Each column is one
-  absolute instant rendered in each city's local time; tap a cell to select
-  that time everywhere. Cells are shaded by local waking hours: green for
-  8:00-17:59, yellow for early morning and evening, gray for night.
-- Date/time picker and a Now button for exact times and returning to live time.
-- Offline city search over a bundled GeoNames extract: 69k cities worldwide
-  with population over 5,000, searchable by name plus state/country
-  ("ashland or" finds Ashland, Oregon). Results are ranked by population.
+- See the current time in every city you care about, side by side
+- Tap any hour to answer "if it's 10 PM for me, what time is it for them?"
+- +1d and -1d badges catch day rollovers before you plan a call for yesterday
+- Color-coded hours show who is awake, at work, or asleep
+- Add any city, even small towns like Ashland, Oregon; 69k cities searchable
+- Plan around any date and time, or snap back to right now
+- Works entirely offline
 
 ## Layout
 
