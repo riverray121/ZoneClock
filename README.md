@@ -8,6 +8,11 @@ iOS app for comparing times across cities. Pick a time in your home city and
 see the local time, weekday, and day offset (+1d / -1d) in every other city
 you follow. Works fully offline.
 
+<p align="center">
+  <img src="docs/screenshots/board-light.png" width="300" alt="City board in light mode: each city shows its local time, day offset, and a color-coded hour strip">
+  <img src="docs/screenshots/board-dark.png" width="300" alt="City board in dark mode">
+</p>
+
 ## Features
 
 - Board of saved cities. The top city is home; hold and drag a city to
